@@ -11,17 +11,12 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static java.util.Collections.newSetFromMap;
-
-public class BreathFirstSearchWebCrawler implements WebCrawler {
-
-    private final PageProcessor pageProcessor;
+public class BreathFirstSearchWebCrawler extends WebCrawler {
 
     private final Logger logger = Logger.getLogger(getClass().getName());
 
@@ -29,10 +24,8 @@ public class BreathFirstSearchWebCrawler implements WebCrawler {
 
     private final AtomicInteger activeCrawlTasks = new AtomicInteger(0);
 
-    private final Set<String> crawledUrls = newSetFromMap(new ConcurrentHashMap<>());
-
-    public BreathFirstSearchWebCrawler(PageProcessor pageProcessor) {
-        this.pageProcessor = pageProcessor;
+    public BreathFirstSearchWebCrawler(PageProcessor pageProcessor, double minimumRelevanceScore) {
+        super(pageProcessor, minimumRelevanceScore);
     }
 
     @Override
@@ -48,13 +41,11 @@ public class BreathFirstSearchWebCrawler implements WebCrawler {
 
     private void crawl(String uri) {
         try {
-            HttpRequest webPageUri = HttpRequest.newBuilder()
-                    .uri(new URI(uri))
-                    .build();
+            HttpRequest webPageUri = HttpRequest.newBuilder().uri(new URI(uri)).build();
             crawledUrls.add(normalizeUri(uri));
             activeCrawlTasks.incrementAndGet();
             httpClient.sendAsync(webPageUri, HttpResponse.BodyHandlers.ofString())
-                    .thenAccept(response -> processPageContent(Jsoup.parse(response.body()), uri))
+                    .thenAccept(response -> processPageContent(Jsoup.parse(response.body())))
                     .whenComplete((test, test2) -> activeCrawlTasks.decrementAndGet());
         } catch (URISyntaxException uriSyntaxException) {
             logger.log(Level.WARNING, "Invalid URI %s".formatted(uri), uriSyntaxException);
@@ -63,31 +54,17 @@ public class BreathFirstSearchWebCrawler implements WebCrawler {
         }
     }
 
-    private void processPageContent(Document parsedPageContent, String uri) {
+    private void processPageContent(Document parsedPageContent) {
         Elements anchors = parsedPageContent.body().getElementsByTag("a");
         String pageContent = parsedPageContent.body().text();
-        var points = pageProcessor.process(pageContent);
-        if (points == 0.0) {
+        double relevanceScore = pageProcessor.process(pageContent);
+        if (relevanceScore <= minimumRelevanceScore) {
             return;
         }
-        logger.info(uri + " Contains java");
-        var urisExtractedFromCurrentPage = anchors.stream()
+        Set<String> urisExtractedFromCurrentPage = anchors.stream()
                 .map(anchor -> anchor.attr("href"))
                 .filter(this::canUriBeCrawled)
                 .collect(Collectors.toSet());
         crawl(urisExtractedFromCurrentPage);
-    }
-
-    private boolean canUriBeCrawled(String uri) {
-        return !(uri.isBlank()
-                 || uri.equals("#")
-                 || crawledUrls.contains(normalizeUri(uri)));
-    }
-
-    private String normalizeUri(String uri) {
-        if (uri.endsWith("/")) {
-            return uri.substring(0, uri.length() - 1);
-        }
-        return uri;
     }
 }
