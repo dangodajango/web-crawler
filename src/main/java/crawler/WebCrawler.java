@@ -2,26 +2,31 @@ package crawler;
 
 import page.PageProcessor;
 
+import java.net.http.HttpClient;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.Collections.newSetFromMap;
 
 public abstract class WebCrawler {
 
-    protected final PageProcessor pageProcessor;
-
-    protected final double minimumRelevanceScore;
+    protected final HttpClient httpClient = HttpClient.newHttpClient();
 
     protected final Set<String> crawledUrls = newSetFromMap(new ConcurrentHashMap<>());
 
+    protected final AtomicInteger activeCrawlTasks = new AtomicInteger(0);
+
+    protected final PageProcessor pageProcessor;
+
     public abstract void crawl(Set<String> uris);
 
-    public abstract int getActiveCrawlTasksCount();
-
-    protected WebCrawler(PageProcessor pageProcessor, double minimumRelevanceScore) {
+    protected WebCrawler(PageProcessor pageProcessor) {
         this.pageProcessor = pageProcessor;
-        this.minimumRelevanceScore = minimumRelevanceScore;
+    }
+
+    public int getActiveCrawlTasksCount() {
+        return activeCrawlTasks.get();
     }
 
     protected boolean canUriBeCrawled(String uri) {

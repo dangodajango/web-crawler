@@ -7,11 +7,9 @@ import page.PageProcessor;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -20,17 +18,8 @@ public class BreathFirstSearchWebCrawler extends WebCrawler {
 
     private final Logger logger = Logger.getLogger(getClass().getName());
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-
-    private final AtomicInteger activeCrawlTasks = new AtomicInteger(0);
-
-    public BreathFirstSearchWebCrawler(PageProcessor pageProcessor, double minimumRelevanceScore) {
-        super(pageProcessor, minimumRelevanceScore);
-    }
-
-    @Override
-    public int getActiveCrawlTasksCount() {
-        return activeCrawlTasks.get();
+    public BreathFirstSearchWebCrawler(PageProcessor pageProcessor) {
+        super(pageProcessor);
     }
 
     @Override
@@ -46,7 +35,7 @@ public class BreathFirstSearchWebCrawler extends WebCrawler {
             activeCrawlTasks.incrementAndGet();
             httpClient.sendAsync(webPageUri, HttpResponse.BodyHandlers.ofString())
                     .thenAccept(response -> processPageContent(Jsoup.parse(response.body())))
-                    .whenComplete((test, test2) -> activeCrawlTasks.decrementAndGet());
+                    .whenComplete((result, error) -> activeCrawlTasks.decrementAndGet());
         } catch (URISyntaxException uriSyntaxException) {
             logger.log(Level.WARNING, "Invalid URI %s".formatted(uri), uriSyntaxException);
             crawledUrls.remove(uri);
@@ -57,8 +46,7 @@ public class BreathFirstSearchWebCrawler extends WebCrawler {
     private void processPageContent(Document parsedPageContent) {
         Elements anchors = parsedPageContent.body().getElementsByTag("a");
         String pageContent = parsedPageContent.body().text();
-        double relevanceScore = pageProcessor.process(pageContent);
-        if (relevanceScore <= minimumRelevanceScore) {
+        if (pageProcessor.process(pageContent)) {
             return;
         }
         Set<String> urisExtractedFromCurrentPage = anchors.stream()
